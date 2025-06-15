@@ -1,0 +1,267 @@
+generator client {
+  provider        = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  BANNED
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  BANNED
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TicketType {
+  BUG
+  FEATURE
+  TASK
+  IMPROVEMENT
+  DOCUMENTATION
+}
+
+enum PermissionCode {
+  // project permissions
+  PROJECT_UPDATE
+  PROJECT_ARCHIVE
+  PROJECT_ACTIVATE
+  PROJECT_DELETE
+
+  // project member permissions
+  PROJECT_MEMBER_VIEW
+  PROJECT_MEMBER_ADD
+  PROJECT_MEMBER_REMOVE
+  PROJECT_MEMBER_ROLE_UPDATE
+
+
+  // ticket permissions
+  TICKET_CREATE
+  TICKET_UPDATE
+  TICKET_DELETE
+  TICKET_REORDER
+
+ // ticket column permissions
+  TICKET_COLUMN_CREATE
+  TICKET_COLUMN_UPDATE
+  TICKET_COLUMN_DELETE
+  TICKET_COLUMN_REORDER
+  @@map("PermissionCode")
+}
+
+enum PermissionGroup {
+  PROJECT
+  TICKET
+  TICKET_COLUMN
+  PROJECT_MEMBER
+}
+
+// Base User Table for all user types
+model User {
+  id                  Int         @id @default(autoincrement())
+  clerkUserId         String      @unique
+  status              UserStatus  @default(ACTIVE)
+  
+  // References to specific user type tables
+  superAdminId        Int?        @unique
+  organizationAdminId Int?        @unique
+  employeeId          Int?        @unique
+  
+  // Relations
+  superAdmin          SuperAdmin?        @relation(fields: [superAdminId], references: [id])
+  organizationAdmin   OrganizationAdmin? @relation(fields: [organizationAdminId], references: [id])
+  employee            Employee?          @relation(fields: [employeeId], references: [id])
+  
+  // Tickets created by this user
+  createdTickets      Ticket[]     @relation("TicketCreator")
+}
+
+// Permission Table
+model Permission {
+  id          Int             @id @default(autoincrement())
+  code        PermissionCode  @unique
+  group       PermissionGroup
+  description String
+  roles       RolePermission[]
+}
+
+// RolePermission Table
+model RolePermission {
+  id          Int        @id @default(autoincrement())
+  roleId      Int
+  permissionId Int
+  createdAt   DateTime   @default(now())
+
+  role        Role       @relation(fields: [roleId], references: [id])
+  permission  Permission @relation(fields: [permissionId], references: [id])
+
+  @@unique([roleId, permissionId])
+}
+
+// Role Table
+model Role {
+  id              Int              @id @default(autoincrement())
+  name            String           @unique
+  description     String
+  organizationId  Int
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  projectMembers  ProjectMember[]
+  permissions     RolePermission[]
+}
+
+// SuperAdmin Table
+model SuperAdmin {
+  id              Int       @id @default(autoincrement())
+  name            String
+  email           String    @unique
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  user            User?
+}
+
+// OrganizationAdmin Table
+model OrganizationAdmin {
+  id              Int        @id @default(autoincrement())
+  name            String
+  email           String     @unique
+  organizationId  Int       
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  user            User?
+}
+
+// Employee Table (replacing the old User table)
+model Employee {
+  id              Int         @id @default(autoincrement())
+  name            String
+  email           String      @unique
+  organizationId  Int         
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  organization    Organization  @relation(fields: [organizationId], references: [id])
+  projectMembers  ProjectMember[]
+  user            User?
+  assignedTickets Ticket[]      @relation("TicketAssignee")
+}
+
+// Organization Table
+model Organization {
+  id              Int                @id @default(autoincrement())
+  name            String             @unique
+  description     String?
+  status          OrganizationStatus @default(ACTIVE)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  employees           Employee[]
+  organizationAdmins  OrganizationAdmin[]
+  projects            Project[]
+  roles               Role[]
+  projectMembers      ProjectMember[]
+}
+
+// Project Table
+model Project {
+  id              Int       @id @default(autoincrement())
+  name            String
+  description     String?
+  status          ProjectStatus @default(ACTIVE)
+  organizationId  Int       
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  projectMembers  ProjectMember[]
+  tickets         Ticket[]
+  columns         TicketColumn[]
+}
+
+// TicketColumn Table
+model TicketColumn {
+  id          Int       @id @default(autoincrement())
+  name        String    
+  description String?
+  position    Int       @default(0)
+  projectId   Int
+  project     Project   @relation(fields: [projectId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  tickets     Ticket[]
+
+  @@unique([name, projectId])
+}
+
+// ProjectMembers Table
+model ProjectMember {
+  id              Int       @id @default(autoincrement())
+  employeeId      Int
+  projectId       Int
+  roleId          Int
+  organizationId  Int       
+  createdAt       DateTime  @default(now())    
+
+  employee        Employee  @relation(fields: [employeeId], references: [id])
+  project         Project   @relation(fields: [projectId], references: [id])
+  role            Role      @relation(fields: [roleId], references: [id])
+  organization    Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([employeeId, projectId])
+}
+
+// Ticket Table
+model Ticket {
+  id              Int           @id @default(autoincrement())
+  title           String
+  description     String?
+  priority        TicketPriority @default(MEDIUM)
+  type            TicketType    @default(TASK)
+  position        Int           @default(0)  // Position in Kanban column
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  dueDate         DateTime?
+  
+  // Relationships
+  projectId       Int
+  project         Project       @relation(fields: [projectId], references: [id])
+  
+  // Column relationship
+  ticketColumnId  Int
+  ticketColumn    TicketColumn  @relation(fields: [ticketColumnId], references: [id], onDelete: Restrict)
+  
+  // Creator relationship - single field
+  creatorId       Int
+  creator         User          @relation("TicketCreator", fields: [creatorId], references: [id])
+  
+  // Assignee relationship
+  assigneeId      Int?
+  assignee        Employee?     @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  
+  @@index([projectId])
+  @@index([creatorId])
+  @@index([assigneeId])
+  @@index([ticketColumnId])
+  @@index([position])
+}
