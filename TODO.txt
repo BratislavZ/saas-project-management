@@ -1,0 +1,13 @@
+<!--- cSpell:disable --->
+
+pass: jfjhdkvmsls
+
+# client
+1. napraviti Paths i onda gadjati href tako
+2. pogledati da li moze da se refaktorise Landing page i komponente koje su tamo, nekako izgleda kao da ima previse divova
+3. dodati slike review-ova aplikacije na Landing page
+4. napraviti permisije na FE
+
+# monolith-express
+1. ubaciti status u Project
+2. ubaciti order u Ticket
